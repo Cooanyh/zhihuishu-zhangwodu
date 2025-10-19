@@ -5,6 +5,9 @@
 #### 3.后台无法运行，功能简陋，临时使用
 #### 4.不建议折叠面板，目前偶尔会出错自动停止需要手动重启
 #### 测试有限，不确认所有掌握度页面都可以正常使用，有问题的可以提交issue并附带课程链接
+<img width="1245" height="603" alt="image" src="https://github.com/user-attachments/assets/a09a3fe6-30f1-4d29-b9bf-9e276491f087" />
+<img width="1245" height="603" alt="image" src="https://github.com/user-attachments/assets/01f8d811-bd19-4903-bbe8-b4b827277b7d" />
+
 ---
 **免责声明**
 - 本脚本仅供个人学习与研究网页自动化原理使用，不得将其用于包括但不限于恶意访问、批量数据采集、非授权控制计算机信息系统等违法违规行为。
