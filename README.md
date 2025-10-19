@@ -7,9 +7,9 @@
 #### 测试有限，不确认所有掌握度页面都可以正常使用，有问题的可以提交issue并附带课程链接
 示例图片：
 **答题**
-![示例回答页面](https://upyun.coren.xin/web/pic/eg_answer_page.png)
+<img width="1245" height="603" alt="image" src="https://github.com/user-attachments/assets/bb4bab3e-43ce-4d52-aa8e-1f03e33afdab" />
 **AI按钮/面板**
-![示例“掌握度”页面](https://upyun.coren.xin/web/pic/eg_zhangwodu_page.png)
+<img width="1245" height="603" alt="image" src="https://github.com/user-attachments/assets/01f8d811-bd19-4903-bbe8-b4b827277b7d" />
 
 ---
 **免责声明**
