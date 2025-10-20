@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         智慧树掌握度答题-AI自动答题脚本 (Zhihuishu AI Auto-Answering)
 // @namespace    http://tampermonkey.net/
-// @version      1.0.1
+// @version      1.1.2
 // @description  在智慧树(studywisdomh5)学习页面，自动完成灰色知识点的掌握度练习。提供UI面板，可自定义API Key。
 // @author       Coren
-// @match        https://studywisdomh5.zhihuishu.com/study/mastery*
+// @match        https://studywisdomh5.zhihuishu.com/study*
 // @match        https://studywisdomh5.zhihuishu.com/exam*
 // @match        https://studywisdomh5.zhihuishu.com/pointOfMastery*
 // @connect      api.deepseek.com
@@ -13,6 +13,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        unsafeWindow
+// @license CC BY-NC-SA 4.0
+// license: https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh
 // ==/UserScript==
 
 (function() {
