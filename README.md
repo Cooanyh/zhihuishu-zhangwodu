@@ -5,6 +5,10 @@
 #### 3.仅支持前台使用，后台无法运行，功能简陋，临时使用
 #### 4.不建议折叠面板，目前偶尔会出错自动停止需要手动重启
 #### 测试有限，不确认所有掌握度页面都可以正常使用，有问题的可以提交issue并附带课程链接
+
+**注意**本脚本需要配合使用Deepseek api key，可以参考知乎文章[极简DeepSeek申请API教程](https://zhuanlan.zhihu.com/p/20578265749)
+> 脚本只支持Deepseek官方平台的api调用，如果你想更换服务商，请自行修改脚本（不会就都复制下来发给AI改），成本而言Deepseek目前最便宜
+
 示例图片：
 **答题**
 <img width="1245" height="603" alt="image" src="https://github.com/user-attachments/assets/bb4bab3e-43ce-4d52-aa8e-1f03e33afdab" />
