@@ -1,13 +1,14 @@
 # 智慧树掌握度答题-AI自动答题脚本 (Zhihuishu AI Auto-Answering)
-### 在智慧树掌握度答题(studywisdomh5)学习页面，~~自动~~半自动完成灰色知识点的掌握度练习。提供UI面板，可自定义deepseekAPI Key。
+### 在智慧树掌握度答题(studywisdomh5)学习页面，~~自动~~半自动完成灰色知识点的掌握度练习。提供UI面板，新增支持免费模式(GLM-4.5-Flash)及自定义多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini)。
 #### 1.UI面板默认在右上角“AI”字样，点击开启
 #### 2.需要手动点击进入答题界面
 #### 3.仅支持前台使用，后台无法运行，功能简陋，临时使用
 #### 4.不建议折叠面板，目前偶尔会出错自动停止需要手动重启
 #### 测试有限，不确认所有掌握度页面都可以正常使用，有问题的可以提交issue并附带课程链接
 
-**注意**本脚本需要配合使用Deepseek api key，可以参考知乎文章[极简DeepSeek申请API教程](https://zhuanlan.zhihu.com/p/20578265749)
-> 脚本只支持Deepseek官方平台的api调用，如果你想更换服务商，请自行修改脚本（不会就都复制下来发给AI改），成本而言Deepseek目前最便宜
+**注意**本脚本需要配合使用AI api key，可以参考知乎文章[极简DeepSeek申请API教程](https://zhuanlan.zhihu.com/p/20578265749)获取Deepseek api key，同时脚本支持多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini)
+> 免费模型的速率与并发有限，可能经常卡住，因此有条件建议使用自定义API，默认状态优先免费模式。
+> 成本而言Deepseek目前最便宜，如何获取其他服务商的api key请自行搜索
 
 示例图片：
 **答题**
