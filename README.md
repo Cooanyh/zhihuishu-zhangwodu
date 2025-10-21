@@ -1,4 +1,4 @@
-# 智慧树掌握度答题-AI自动答题脚本 (Zhihuishu AI Auto-Answering)
+# 知到智慧树掌握度答题-AI自动答题脚本 (Zhihuishu AI Auto-Answering)
 ### 在智慧树掌握度答题(studywisdomh5)学习页面，~~自动~~半自动完成灰色知识点的掌握度练习。提供UI面板，新增支持免费模式(GLM-4.5-Flash)及自定义多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini)。
 #### 1.UI面板默认在右上角“AI”字样，点击开启
 #### 2.需要手动点击进入答题界面
