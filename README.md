@@ -1,21 +1,103 @@
 ![Version](https://img.shields.io/badge/版本-2.0.0-blue?style=flat-square)     [![License](https://img.shields.io/badge/协议-CC%20BY--NC--SA%204.0-orange?style=flat-square)](https://creativecommons.org/licenses/by-nc-sa/4.0/)     [![Author](https://img.shields.io/badge/作者-Coren-orange?style=flat-square)](https://github.com/Cooanyh)
 # 知到智慧树掌握度答题-AI自动答题脚本 (Zhihuishu AI Auto-Answering)
-### 在智慧树掌握度答题(studywisdomh5)学习页面，~~自动~~半自动完成灰色知识点的掌握度练习。提供UI面板，新增支持免费模式(GLM-4.5-Flash)及自定义多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini)。
+### 在智慧树掌握度答题(studywisdomh5)学习页面，全自动完成灰色知识点/红色薄弱点的掌握度练习。提供UI面板，支持免费模式(GLM-4.5-Flash)及自定义多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini)。
+
 #### 1.UI面板默认在右上角“AI”字样，点击开启
-#### 2.需要手动点击进入答题界面
-#### 3.仅支持前台使用，后台无法运行，功能简陋，临时使用
-#### 4.不建议折叠面板，目前偶尔会出错自动停止需要手动重启
+#### 3.全自动进入答题，后台运行可能中止
+1. 自动寻找任务：在课程的“知识点掌握”页面，自动定位所有未完成的灰色知识点并进入答题（或红色薄弱点，**取决于用户选择，默认仅灰色未完成**）。
+2. 采用AI答题：读取题目和选项，通过调用 DeepSeek 的AI模型获取答案，并自动在页面上选择正确选项（支持单选和多选）。
+3. 自动翻页与提交：完成一页的所有题目后，自动翻页，直到完成所有题目并提交。
+4. 循环执行：提交后自动返回，继续寻找下一个未完成的知识点，直到所有任务完成。
+5. 支持多个掌握度页面：/study/mastery或者/study/analysis（见下图示例位置）
 #### 测试有限，不确认所有掌握度页面都可以正常使用，有问题的可以提交issue并附带课程链接
 
-**注意**本脚本需要配合使用AI api key，可以参考知乎文章[极简DeepSeek申请API教程](https://zhuanlan.zhihu.com/p/20578265749)获取Deepseek api key，同时脚本支持多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini)
+> **注意**本脚本需要配合使用AI api key，可以参考知乎文章[极简DeepSeek申请API教程](https://zhuanlan.zhihu.com/p/20578265749)获取Deepseek api key，同时脚本支持多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini)
 > 免费模型的速率与并发有限，可能经常卡住，因此有条件建议使用自定义API，默认状态优先免费模式。
 > 成本而言Deepseek目前最便宜，如何获取其他服务商的api key请自行搜索
 
 示例图片：
 **答题**
-<img width="1245" height="603" alt="image" src="https://github.com/user-attachments/assets/bb4bab3e-43ce-4d52-aa8e-1f03e33afdab" />
+01
+<img src="https://scriptcat.org/api/v2/resource/image/bBvcNGmnDXyWI0vV" width="700" />
+02
+<img src="https://scriptcat.org/api/v2/resource/image/jl073ZWgelMJMTDU" width="700" />
 **AI按钮/面板**
-<img width="1245" height="603" alt="image" src="https://github.com/user-attachments/assets/01f8d811-bd19-4903-bbe8-b4b827277b7d" />
+<img src="https://scriptcat.org/api/v2/resource/image/6lqn1FtYDNRmno5O" width="700" />
+
+#### 新增支持使用的页面
+<img src="https://scriptcat.org/api/v2/resource/image/vfh3E7ybVURLHrSX" width="700" />
+
+---
+
+
+### 支持"题库"：
+
+1. UI 界面：新增"题库模式"选项，并提供 Gist URL 输入框、"题库未命中则自动 AI"的复选框，以及一个手动刷新题库的按钮。
+
+2. 模糊搜索：加入一个经典的 Levenshtein 距离 算法实现，用来计算两个字符串的相似度，实现“90% 模糊匹配”题目后答题。
+
+3. 核心逻辑：
+          * 如果当前是题库模式，就先进行模糊搜索。
+          * 如果找到了，就返回题库答案。
+          * 如果没找到，就检查"自动返回AI答题模式"复选框是否被勾选。
+          * 如果勾选了，就自动调用 AI API（会根据你的"自定义模式"设置或"免费模式"来决定用哪个 AI）。
+
+---
+### 如何配置“题库模式”
+“题库模式”允许脚本从你指定的 URL（例如 Gist）加载一个 JSON 格式的题库文件，然后通过模糊匹配（90% 相似度）在题库中搜索答案。
+
+#### 第 1 步：创建你的题库 JSON 文件
+这是最关键的一步。需要创建一个 .json 文件，其内容必须是一个 JSON 数组，数组中的每个元素是一个包含 q 和 a 的对象。
+**标准格式:**（最简单的方法就是把题库和标准格式交给AI帮忙修改为标准格式）
+
+```
+[
+  {
+    "q": "这里是题目的完整题干，不需要包含题号。",
+    "a": "A"
+  },
+  {
+    "q": "这是另一道多选题的题干。",
+    "a": "ABCD"
+  },
+  {
+    "q": "这是判断题的题干。",
+    "a": "A"
+  }
+]
+```
+**说明:**
+            1. "q": 问题 (Question)必须是字符串。参考上面的示例，请放入完整的题干，例如：“‘三个代表’重要思想的核心观点是什么？”  脚本会自动去除题干开头的题号（如 "1."、"一、"）和空格，所以你需确保核心文字的匹配度。
+
+            2. "a": 答案 (Answer)必须是字符串。参考上面的示例，单选题: "A"；多选题: "ABC" (将所有正确选项字母连在一起)；判断题: "A" (代表“对”或“T”) 或 "B" (代表“错”或“F”)。
+
+比如：https://gist.githubusercontent.com/Cooanyh/a5d30cec09967167f9757fb9423885c8/raw/65ed73829fbf12b3f1a1b858ff195d77fa0c5a67/zhihuishu-test_tiku
+
+#### 第 2 步：托管你的题库文件 (以 Gist为例)
+
+你需要一个能公开访问的、返回纯文本 JSON 内容的 URL。GitHub Gist 是最简单免费的选择。
+1. 访问 gist.github.com 并登录你的 GitHub 账号。
+2. 在第一个文件名框中，给你的题库起个名字，必须以 .json 结尾，例如：my_quiz_bank.json。
+3. 将你准备好的 JSON 格式题库内容，完整粘贴到下面的大文本框中。
+4. 点击右下角的 "Create public gist" 按钮来创建。
+5. 创建成功后，页面会跳转。在你的 Gist 页面右上角，找到一个 "Raw" 按钮，点击它。
+6. 浏览器会打开一个新的页面，只显示你的 JSON 文本内容。复制这个页面的 URL。
+7. 这个 URL 应该看起来像这样：https://gist.githubusercontent.com/你的用户名/一长串ID/raw/一个版本ID/my_quiz_bank.json
+
+#### 第 3 步：在脚本中配置题库
+1. 在智慧树的页面打开脚本面板（点击 "AI" 按钮）。
+2. 找到 “答题模式” 下拉菜单，选择 “题库模式 (Gist/JSON)”。
+3. 此时下方会显示题库设置。在 “题库 JSON 地址” 输入框中，粘贴你上一步复制的 "Raw" URL。
+4. 点击 “刷新/加载题库” 按钮。
+5. 观察下方的状态日志。如果一切顺利，你应该会看到日志显示：“题库加载成功！共 XXX 条有效记录。”
+6. 
+#### 第 4 步：理解“题库未命中则自动 AI”
+在题库设置中，有一个复选框：“题库未命中则自动 AI”。
+1. 如果你勾选了它（推荐）：
+脚本会先在你的题库里进行模糊搜索。如果没有找到相似度 90% 以上的答案（即“未命中”），脚本不会跳过这道题。相反，它会自动调用 AI（根据你的“自定义 AI”或“免费模式”设置）来回答这道题。效果：题库能答的用题库，题库没有的用 AI。
+2. 如果你不勾选它：
+脚本只会搜索你的题库。如果没有找到答案，脚本会直接跳过这道题（在日志中显示“未找到答案”），不会去调用 AI。效果：完全依赖你的题库，适用于题库非常全、或者你不想使用任何 AI 的情况。配置完成后，点击“开始自动答题”，脚本就会按照你的设置运行了。
+
 
 ---
 **免责声明**
