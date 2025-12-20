@@ -1,12 +1,15 @@
 // ==UserScript==
 // @name         知到智慧树掌握度答题-AI自动答题脚本(Zhihuishu AI Auto-Answering)
-// @namespace    http://tampermonkey.net/
-// @version      1.4.1
-// @description  半自动完成智慧树掌握度练习。新增题库(Gist)搜索模式，支持搜题失败自动Fallback AI。支持免费模式(GLM-4.5-Flash)及自定义多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)。
+// @namespace    https://github.com/Cooanyh/zhihuishu-zhangwodu
+// @version      2.0.0
+// @description  全自动完成智慧树掌握度练习。支持多页面布局适配、智能弹窗探测与精准匹配。集成题库搜索与多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)自动Fallback。
 // @author       Coren
 // @match        https://studywisdomh5.zhihuishu.com/study*
 // @match        https://studywisdomh5.zhihuishu.com/exam*
 // @match        https://studywisdomh5.zhihuishu.com/pointOfMastery*
+// @match        https://wisdom-mooc.zhihuishu.com/study*
+// @match        https://wisdom-mooc.zhihuishu.com/exam*
+// @match        https://wisdom-mooc.zhihuishu.com/pointOfMastery*
 // @connect      api.coren.xin
 // @connect      open.bigmodel.cn
 // @connect      api.deepseek.com
@@ -23,7 +26,7 @@
 // @license      https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     // --- 1. UI 和样式 ---
@@ -53,6 +56,14 @@
                         <option value="free">免费模式 (GLM-4.5-Flash)</option>
                         <option value="quizbank">题库模式 (Gist/JSON)</option>
                         <option value="custom">自定义 AI 模式</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label for="stop-condition">完成条件:</label>
+                    <select id="stop-condition">
+                        <option value="gray">仅灰色 (未开始)</option>
+                        <option value="non-red">含薄弱点 (灰+粉)</option>
                     </select>
                 </div>
 
@@ -112,10 +123,11 @@
     const quizbankUrlInput = document.getElementById('quizbank-url');
     const fallbackAiCheckbox = document.getElementById('fallback-ai');
     const refreshQuizbankButton = document.getElementById('refresh-quizbank');
+    const stopConditionSelect = document.getElementById('stop-condition');
 
     let isPanelVisible = false;
     let autoMode = false;
-    let quizBank = []; 
+    let quizBank = [];
 
     // --- 3.AI服务商配置中心 ---
     const API_PROVIDERS = {
@@ -130,7 +142,7 @@
             name: "Zhipu (智谱 GLM)",
             url: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
             buildHeaders: (key) => ({ "Content-Type": "application/json", "Authorization": `Bearer ${key}` }),
-            buildPayload: (messages, model) => ({ model: "glm-4", messages, max_tokens: 50, temperature: 0, thinking: {type: "disabled"} }),
+            buildPayload: (messages, model) => ({ model: "glm-4", messages, max_tokens: 50, temperature: 0, thinking: { type: "disabled" } }),
             parseResponse: (data) => data.choices?.[0]?.message?.content
         },
         openai: {
@@ -187,6 +199,7 @@
     // 加载题库设置
     quizbankUrlInput.value = GM_getValue('quizbank_url', '');
     fallbackAiCheckbox.checked = GM_getValue('fallback_ai', false);
+    stopConditionSelect.value = GM_getValue('stop_condition', 'gray');
 
 
     function updateUIVisibility() {
@@ -245,6 +258,10 @@
 
     fallbackAiCheckbox.addEventListener('change', () => {
         GM_setValue('fallback_ai', fallbackAiCheckbox.checked);
+    });
+
+    stopConditionSelect.addEventListener('change', () => {
+        GM_setValue('stop_condition', stopConditionSelect.value);
     });
 
     refreshQuizbankButton.addEventListener('click', fetchQuizBank);
@@ -308,8 +325,8 @@
 
             // 1. 简单的完全匹配
             if (processedQuestion === processedItemQ) {
-                 log(`题库精确命中: ${item.a}`);
-                 return item.a;
+                log(`题库精确命中: ${item.a}`);
+                return item.a;
             }
 
             // 2. 模糊匹配 (计算相似度)
@@ -346,7 +363,7 @@
             method: "GET",
             url: url,
             timeout: 15000,
-            onload: function(response) {
+            onload: function (response) {
                 if (response.status === 200) {
                     try {
                         let data = JSON.parse(response.responseText);
@@ -415,7 +432,7 @@
                 headers,
                 data,
                 timeout: 15000,
-                onload: function(response) {
+                onload: function (response) {
                     if (response.status >= 200 && response.status < 300) {
                         try {
                             const responseData = JSON.parse(response.responseText);
@@ -468,7 +485,7 @@
                 const customKey = apiKeyInput.value;
                 const providerKey = providerSelect.value;
                 const aiModeToUse = (customKey && API_PROVIDERS[providerKey]) ? 'custom' : 'free';
-                
+
                 log(`Fallback AI 模式: ${aiModeToUse}`);
                 return await callAiApi(question, options, type, aiModeToUse);
             } else {
@@ -486,7 +503,7 @@
     async function processTestPage() {
         log("进入答题页面，开始处理...");
         try { await waitForQuestionChange("1", 10000); }
-        catch(e) { log(`错误: ${e.message}`); toggleAutoMode(false); return; }
+        catch (e) { log(`错误: ${e.message}`); toggleAutoMode(false); return; }
 
         const questionItems = document.querySelectorAll('.answer-card .list .item');
         log(`共 ${questionItems.length} 道题。`);
@@ -513,7 +530,7 @@
 
                 // --- 调用总调度函数 ---
                 const answer = await getAnswer(questionTitle, optionsText, questionType);
-                
+
                 if (answer) {
                     log(`尝试选择答案: ${answer}`);
                     for (let char of answer) {
@@ -577,18 +594,224 @@
         else { log("错误: 未找到返回按钮。"); }
     }
 
-    // 简化主页逻辑，仅滚动和提示
-    async function findAndScrollToGrayItem() {
-        log("在主页面，寻找灰色项目...");
-        const grayItem = document.querySelector('.item-box.gray');
+    // 主页逻辑：自动悬停并点击"提升掌握度"按钮
+    async function findAndScrollToIncompleteItem() {
+        // 等待页面稳定
+        await new Promise(r => setTimeout(r, 1000));
 
-        if (grayItem) {
-            log("已找到灰色项目，正在滚动至该位置...");
-            grayItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            await new Promise(r => setTimeout(r, 1000));
-            log("已定位到灰色项目，请手动点击进入练习。");
+        const stopCondition = stopConditionSelect.value;
+        let targetItem = null;
+        let logMessage = '';
+
+        // 调试：显示当前页面所有项目的颜色
+        const allItems = document.querySelectorAll('.item-box');
+        const colorCounts = {};
+        allItems.forEach(item => {
+            const colorClass = item.className.replace('item-box', '').trim().split(' ')[0] || 'unknown';
+            colorCounts[colorClass] = (colorCounts[colorClass] || 0) + 1;
+        });
+        log(`页面项目统计: ${JSON.stringify(colorCounts)}`);
+
+        if (stopCondition === 'gray') {
+            // 仅查找灰色 (未开始) 项目
+            log("寻找灰色(未开始)项目...");
+            targetItem = document.querySelector('.item-box.gray');
+            logMessage = '灰色';
         } else {
-            log("恭喜！未找到灰色项目，任务全部完成。");
+            // 查找灰色和粉色 (薄弱点) 项目
+            log("寻找灰色或粉色(薄弱)项目...");
+            targetItem = document.querySelector('.item-box.gray') ||
+                document.querySelector('.item-box.pink');
+            logMessage = '灰色/粉色';
+        }
+
+        if (targetItem) {
+            // 获取完整的类名用于调试
+            const fullClassName = targetItem.className;
+            const itemName = targetItem.querySelector('.item-box-name')?.textContent?.trim() || '未知';
+            log(`选中项目: "${itemName}" (class: ${fullClassName})`);
+
+            // 验证选中的项目确实是目标颜色
+            if (stopCondition === 'gray' && !targetItem.classList.contains('gray')) {
+                log("警告: 选中的项目不是灰色! 跳过...");
+                return;
+            }
+            if (stopCondition !== 'gray' && !targetItem.classList.contains('gray') && !targetItem.classList.contains('pink')) {
+                log("警告: 选中的项目不是灰色或粉色! 跳过...");
+                return;
+            }
+
+            log(`已确认${logMessage}项目，正在滚动至该位置...`);
+            targetItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await new Promise(r => setTimeout(r, 500));
+
+            // 隐藏所有现有的弹窗
+            log("隐藏所有现有弹窗...");
+            document.body.click();
+            await new Promise(r => setTimeout(r, 100));
+            const allPopovers = document.querySelectorAll('.el-popover, .el-popper, .mastery-box-custom-popover');
+            log(`发现 ${allPopovers.length} 个弹窗，正在隐藏...`);
+            allPopovers.forEach(p => {
+                p.style.display = 'none';
+                p.setAttribute('aria-hidden', 'true');
+            });
+            await new Promise(r => setTimeout(r, 200));
+
+            // 查找可点击的触发器元素
+            const triggerElement = targetItem.querySelector('.el-tooltip__trigger') || targetItem;
+
+            // 获取目标项目名称 - 两种页面结构
+            let targetItemName = targetItem.querySelector('.item-box-name_text')?.textContent?.trim() ||
+                targetItem.querySelector('.item-box-name')?.textContent?.trim() || '';
+            log(`目标项目名称: "${targetItemName}"`);
+
+            // 获取目标元素的坐标
+            const rect = triggerElement.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            log(`目标坐标: (${Math.round(centerX)}, ${Math.round(centerY)})`);
+
+            // 检测是哪个页面结构
+            const isAnalysisPage = window.location.href.includes('/study/analysis');
+            const isMasteryPage = window.location.href.includes('/study/mastery');
+
+            // 根据页面类型选择点击目标
+            // mastery: 直接点击 item-box-name 元素
+            // analysis: 点击 tooltip trigger 元素
+            let clickTarget = triggerElement;
+            if (isMasteryPage) {
+                // 在 mastery 页面，点击 .item-box-name 内部元素更可靠
+                clickTarget = targetItem.querySelector('.item-box-name') || triggerElement;
+            }
+
+            // 直接点击触发器元素打开弹窗
+            log(`正在点击目标元素 (${isMasteryPage ? 'mastery' : 'analysis'} 模式)...`);
+
+            let popoverButton = null;
+
+            if (isMasteryPage) {
+                // 对于 mastery 页面：直接在所有弹窗中查找匹配的按钮
+                log("Mastery 模式: 直接查找匹配的弹窗按钮...");
+
+                const allPopovers = document.querySelectorAll('.el-popover, .mastery-box-custom-popover');
+                for (const popover of allPopovers) {
+                    const nameEl = popover.querySelector('.name') || popover.querySelector('strong');
+                    const popoverName = nameEl?.textContent?.trim() || '';
+
+                    // 检查是否匹配目标项目
+                    const targetClean = targetItemName.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
+                    const popoverClean = popoverName.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
+
+                    if (targetClean && popoverClean && targetClean === popoverClean) {
+                        log(`找到匹配弹窗: "${popoverName.substring(0, 20)}..."`);
+
+                        // 找到该弹窗中的按钮
+                        const btn = popover.querySelector('.el-button');
+                        if (btn && (btn.textContent.includes('提升掌握度') || btn.textContent.includes('去提升'))) {
+                            popoverButton = btn;
+
+                            // 确保这个弹窗可见
+                            popover.style.display = 'block';
+                            popover.style.visibility = 'visible';
+                            popover.style.opacity = '1';
+                            popover.setAttribute('aria-hidden', 'false');
+
+                            log("弹窗匹配成功!");
+                            break;
+                        }
+                    }
+                }
+
+                if (!popoverButton) {
+                    log("警告: 未在预渲染弹窗中找到匹配项，尝试点击触发...");
+                    reliableClick(clickTarget);
+                }
+            } else {
+                // 对于 analysis 页面：使用原来的点击触发方式
+                reliableClick(clickTarget);
+            }
+
+            // 如果还没找到按钮，等待弹窗出现
+            if (!popoverButton) {
+                await new Promise(r => setTimeout(r, 500));
+                const newPopovers = document.querySelectorAll('.el-popover, .el-popper, .mastery-box-custom-popover');
+                log(`点击后发现 ${newPopovers.length} 个弹窗`);
+
+                log("等待弹窗按钮...");
+                const maxWaitTime = 2000;
+                const checkInterval = 100;
+                let elapsedTime = 0;
+
+                while (elapsedTime < maxWaitTime) {
+                    await new Promise(r => setTimeout(r, checkInterval));
+                    elapsedTime += checkInterval;
+
+                    // 查找带有"提升掌握度"或"去提升"文字的按钮
+                    const allButtons = document.querySelectorAll('.el-popover .el-button, .mastery-box-custom-popover .el-button, .custom-content .el-button, .el-popper .el-button');
+                    for (const btn of allButtons) {
+                        if (btn.textContent.includes('提升掌握度') || btn.textContent.includes('去提升')) {
+                            // 验证弹窗内容与目标项目匹配
+                            const popover = btn.closest('.el-popover, .el-popper, .mastery-box-custom-popover');
+                            const popoverNameEl = popover?.querySelector('.name') ||
+                                popover?.querySelector('strong.name') ||
+                                popover?.querySelector('strong');
+                            const popoverName = popoverNameEl?.textContent?.trim() || '';
+
+                            log(`弹窗标题: "${popoverName.substring(0, 25)}..."`);
+
+                            // 提取目标名称进行匹配
+                            const targetClean = targetItemName.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
+                            const popoverClean = popoverName.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
+                            const targetSuffix = targetClean.slice(-20);
+
+                            if (targetSuffix && !popoverClean.includes(targetSuffix)) {
+                                continue; // 不匹配，继续下一个
+                            }
+                            popoverButton = btn;
+                            log(`弹窗匹配成功!`);
+                            break;
+                        }
+                    }
+
+                    if (popoverButton) break;
+                }
+            }
+
+            // 如果第一次点击没触发弹窗，等待后再次点击
+            if (!popoverButton) {
+                log("首次点击未触发弹窗，再次尝试...");
+                await new Promise(r => setTimeout(r, 300));
+                reliableClick(triggerElement);
+                await new Promise(r => setTimeout(r, 500));
+
+                // 再次查找按钮
+                elapsedTime = 0;
+                while (elapsedTime < maxWaitTime) {
+                    await new Promise(r => setTimeout(r, checkInterval));
+                    elapsedTime += checkInterval;
+
+                    const allButtons = document.querySelectorAll('.el-popover .el-button, .mastery-box-custom-popover .el-button, .custom-content .el-button, .el-popper .el-button');
+                    for (const btn of allButtons) {
+                        if (btn.textContent.includes('提升掌握度') || btn.textContent.includes('去提升')) {
+                            popoverButton = btn;
+                            break;
+                        }
+                    }
+
+                    if (popoverButton) break;
+                }
+            }
+
+            if (popoverButton) {
+                log("已找到【提升掌握度/去提升】按钮，正在点击...");
+                await new Promise(r => setTimeout(r, 300));
+                reliableClick(popoverButton);
+                log("已点击进入练习页面！");
+            } else {
+                log("警告: 未能找到按钮，请手动点击该项目。");
+            }
+        } else {
+            log(`恭喜！未找到${logMessage}项目，任务全部完成。`);
             toggleAutoMode(false);
         }
     }
@@ -597,9 +820,14 @@
     function mainLoop() {
         if (!autoMode) return;
         const currentUrl = window.location.href;
-        if (currentUrl.includes('/study/mastery')) { findAndScrollToGrayItem(); }
-        else if (currentUrl.includes('/exam')) { processTestPage(); }
-        else if (currentUrl.includes('/pointOfMastery')) { processResultsPage(); }
+        // 支持 studywisdomh5.zhihuishu.com 和 wisdom-mooc.zhihuishu.com
+        if (currentUrl.includes('/study/mastery') || currentUrl.includes('/study/analysis')) {
+            findAndScrollToIncompleteItem();
+        } else if (currentUrl.includes('/exam')) {
+            processTestPage();
+        } else if (currentUrl.includes('/pointOfMastery')) {
+            processResultsPage();
+        }
     }
 
     function toggleAutoMode(start) {
@@ -623,7 +851,7 @@
         if (url !== lastUrl) {
             lastUrl = url;
             log(`URL 变动: ${url}`);
-            if(autoMode) setTimeout(mainLoop, 2000);
+            if (autoMode) setTimeout(mainLoop, 2000);
         }
     }).observe(document, { subtree: true, childList: true });
 
