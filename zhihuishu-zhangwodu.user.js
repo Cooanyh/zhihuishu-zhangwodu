@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知到智慧树掌握度答题-AI自动答题脚本(Zhihuishu AI Auto-Answering)
 // @namespace    https://github.com/Cooanyh/zhihuishu-zhangwodu
-// @version      2.0.0
+// @version      2.1.0
 // @description  全自动完成智慧树掌握度练习。支持多页面布局适配、智能弹窗探测与精准匹配。集成题库搜索与多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)自动Fallback。
 // @author       Coren
 // @match        https://studywisdomh5.zhihuishu.com/study*
@@ -135,7 +135,7 @@
             name: "DeepSeek",
             url: "https://api.deepseek.com/v1/chat/completions",
             buildHeaders: (key) => ({ "Content-Type": "application/json", "Authorization": `Bearer ${key}` }),
-            buildPayload: (messages, model) => ({ model: "deepseek-chat", messages, max_tokens: 50, temperature: 0 }),
+            buildPayload: (messages, model) => ({ model: "deepseek-v4-flash", messages, max_tokens: 50, temperature: 0, thinking: {"type": "disabled"} }),
             parseResponse: (data) => data.choices?.[0]?.message?.content
         },
         zhipu: {
