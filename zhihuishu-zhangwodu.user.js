@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         知到智慧树掌握度答题-AI自动答题脚本(Zhihuishu AI Auto-Answering)
 // @namespace    https://github.com/Cooanyh/zhihuishu-zhangwodu
-// @version      2.2.3
-// @description  全自动完成智慧树掌握度练习。支持多页面布局适配、智能弹窗探测与精准匹配。集成题库搜索与多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)自动Fallback。
+// @version      2.2.4
+// @description  全自动完成智慧树掌握度练习。支持后台等待恢复、多页面布局适配、智能弹窗探测与精准匹配。集成题库搜索与多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)自动Fallback。
 // @author       Coren
 // @match        https://studywisdomh5.zhihuishu.com/study*
 // @match        https://studywisdomh5.zhihuishu.com/exam*
@@ -138,6 +138,82 @@
     let mainLoopRunning = false;
     let mainLoopPending = false;
     let quizBank = [];
+    // 仅按页面前台有效时间计时；浏览器彻底冻结页面时无法执行脚本，恢复后再接续。
+    let hiddenSince = document.hidden ? performance.now() : null;
+    let accumulatedHiddenTime = 0;
+
+    function getActiveTime() {
+        const now = performance.now();
+        const currentHiddenTime = hiddenSince === null ? 0 : now - hiddenSince;
+        return now - accumulatedHiddenTime - currentHiddenTime;
+    }
+
+    function scheduleActiveTimeout(callback, delay) {
+        const delayMs = Math.max(0, Number(delay) || 0);
+        const startedAt = getActiveTime();
+        let timeoutId = null;
+        let cancelled = false;
+
+        const cleanup = () => {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+
+        const check = () => {
+            timeoutId = null;
+            if (cancelled || document.hidden) return;
+
+            const remaining = delayMs - (getActiveTime() - startedAt);
+            if (remaining <= 0) {
+                cancelled = true;
+                cleanup();
+                callback();
+                return;
+            }
+            timeoutId = setTimeout(check, Math.min(remaining, 1000));
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.hidden || cancelled) return;
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            check();
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        timeoutId = setTimeout(check, Math.min(delayMs, 1000));
+        return () => {
+            if (cancelled) return;
+            cancelled = true;
+            cleanup();
+        };
+    }
+
+    function waitForActiveTime(delay) {
+        return new Promise(resolve => scheduleActiveTimeout(resolve, delay));
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        const now = performance.now();
+        if (document.hidden) {
+            if (hiddenSince === null) hiddenSince = now;
+            if (autoMode) log('页面进入后台；后台时间不计入等待时限，恢复后继续当前流程。');
+            return;
+        }
+
+        if (hiddenSince !== null) {
+            const hiddenDuration = Math.max(0, now - hiddenSince);
+            accumulatedHiddenTime += hiddenDuration;
+            hiddenSince = null;
+            if (autoMode) log(`页面已恢复前台（后台约 ${Math.round(hiddenDuration / 1000)} 秒），继续当前任务。`);
+        }
+        if (autoMode && !mainLoopRunning && !mainLoopTimer) requestMainLoop(0);
+    });
 
     // --- 3.AI服务商配置中心 ---
     const API_PROVIDERS = {
@@ -638,7 +714,7 @@
             if (!questionEl.classList.contains('active')) { reliableClick(questionEl); }
             try {
                 await waitForQuestionChange(questionNumber);
-                await new Promise(r => setTimeout(r, 300));
+                await waitForActiveTime(300);
                 const questionContainer = document.querySelector('.exam-item:not([style*="display: none"]) .question-item');
                 const questionType = questionContainer.querySelector('.quest-type')?.innerText.trim() || '单选题';
                 const questionTitle = questionContainer.querySelector('.quest-title .option-name')?.innerText.trim();
@@ -698,7 +774,7 @@
                             log(`错误：找不到选项 ${String.fromCharCode(65 + optionIndex)} 的内部 input 元素。`);
                             unansweredQuestionNumbers.add(questionNumber);
                         }
-                        await new Promise(r => setTimeout(r, 200));
+                        await waitForActiveTime(200);
                     }
 
                     const selectedAfter = new Set(optionsElements
@@ -714,7 +790,7 @@
 
                 if (modeSelect.value === 'free' || (modeSelect.value === 'quizbank' && fallbackAiCheckbox.checked)) {
                     log("避免API速率限制 (或快速翻页)，等待2秒...");
-                    await new Promise(r => setTimeout(r, 2000));
+                    await waitForActiveTime(2000);
                 }
 
             } catch (err) {
@@ -748,22 +824,30 @@
         log(`正在等待第 ${qNum} 题加载...`);
         return new Promise((resolve, reject) => {
             const intervalTime = 200;
-            let elapsedTime = 0;
-            const interval = setInterval(() => {
-                elapsedTime += intervalTime;
-                if (elapsedTime >= timeout) { clearInterval(interval); reject(new Error(`等待第 ${qNum} 题超时`)); return; }
-                const answerCardItem = Array.from(document.querySelectorAll('.answer-card .list .item')).find(item => item.textContent.trim() === qNum);
-                if (!answerCardItem || !answerCardItem.classList.contains('active')) return;
-                const visibleExamItem = Array.from(document.querySelectorAll('.exam-item')).find(el => el.offsetHeight > 0);
-                const questionContainer = visibleExamItem?.querySelector('.question-item');
-                const titleElement = questionContainer?.querySelector('.quest-title .option-index');
-                const displayedQuestionNumber = titleElement?.textContent?.trim().match(/^\d+/)?.[0];
-                if (displayedQuestionNumber === String(qNum)) {
-                    log(`第 ${qNum} 题加载成功!`);
-                    clearInterval(interval);
-                    resolve();
+            const startedAt = getActiveTime();
+            let cancelNextPoll = null;
+            const poll = () => {
+                if (getActiveTime() - startedAt >= timeout) {
+                    if (cancelNextPoll) cancelNextPoll();
+                    reject(new Error(`等待第 ${qNum} 题超时`));
+                    return;
                 }
-            }, intervalTime);
+                const answerCardItem = Array.from(document.querySelectorAll('.answer-card .list .item')).find(item => item.textContent.trim() === qNum);
+                if (answerCardItem && answerCardItem.classList.contains('active')) {
+                    const visibleExamItem = Array.from(document.querySelectorAll('.exam-item')).find(el => el.offsetHeight > 0);
+                    const questionContainer = visibleExamItem?.querySelector('.question-item');
+                    const titleElement = questionContainer?.querySelector('.quest-title .option-index');
+                    const displayedQuestionNumber = titleElement?.textContent?.trim().match(/^\d+/)?.[0];
+                    if (displayedQuestionNumber === String(qNum)) {
+                        log(`第 ${qNum} 题加载成功!`);
+                        resolve();
+                        return;
+                    }
+                }
+
+                cancelNextPoll = scheduleActiveTimeout(poll, intervalTime);
+            };
+            poll();
         });
     }
 
@@ -790,12 +874,12 @@
         if (!autoMode) return;
         log("进入结算页面，等待读取掌握度和答题统计...");
 
-        const settleDeadline = Date.now() + 10000;
+        const settleStartedAt = getActiveTime();
         let resultSummary = null;
-        while (autoMode && Date.now() < settleDeadline) {
+        while (autoMode && getActiveTime() - settleStartedAt < 10000) {
             resultSummary = readExerciseResultSummary();
             if (resultSummary) break;
-            await new Promise(r => setTimeout(r, 250));
+            await waitForActiveTime(250);
         }
         if (!autoMode) return;
         if (resultSummary) {
@@ -806,12 +890,12 @@
         markActiveMasteryItemAttempted(resultSummary);
         log("结算检查完成，继续返回掌握度页面。");
 
-        const deadline = Date.now() + 10000;
+        const backButtonStartedAt = getActiveTime();
         let backButton = null;
-        while (autoMode && Date.now() < deadline) {
+        while (autoMode && getActiveTime() - backButtonStartedAt < 10000) {
             backButton = document.querySelector('.backup-icon');
             if (backButton) break;
-            await new Promise(r => setTimeout(r, 250));
+            await waitForActiveTime(250);
         }
         if (!autoMode) return;
         if (backButton) {
@@ -825,7 +909,7 @@
     // 主页逻辑：自动悬停并点击"提升掌握度"按钮
     async function findAndScrollToIncompleteItem() {
         // 等待页面稳定
-        await new Promise(r => setTimeout(r, 1000));
+        await waitForActiveTime(1000);
         if (!autoMode) return;
 
         const stopCondition = stopConditionSelect.value;
@@ -867,19 +951,19 @@
 
             log(`已确认${logMessage}项目，正在滚动至该位置...`);
             targetItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            await new Promise(r => setTimeout(r, 500));
+            await waitForActiveTime(500);
 
             // 隐藏所有现有的弹窗
             log("隐藏所有现有弹窗...");
             document.body.click();
-            await new Promise(r => setTimeout(r, 100));
+            await waitForActiveTime(100);
             const allPopovers = document.querySelectorAll('.el-popover, .el-popper, .mastery-box-custom-popover');
             log(`发现 ${allPopovers.length} 个弹窗，正在隐藏...`);
             allPopovers.forEach(p => {
                 p.style.display = 'none';
                 p.setAttribute('aria-hidden', 'true');
             });
-            await new Promise(r => setTimeout(r, 200));
+            await waitForActiveTime(200);
 
             // 查找可点击的触发器元素
             const triggerElement = targetItem.querySelector('.el-tooltip__trigger') || targetItem;
@@ -939,20 +1023,20 @@
                 reliableClick(clickTarget);
             }
 
+            const maxWaitTime = 2000;
+            const checkInterval = 100;
+
             // 如果还没找到按钮，等待弹窗出现
             if (!popoverButton) {
-                await new Promise(r => setTimeout(r, 500));
+                await waitForActiveTime(500);
                 const newPopovers = document.querySelectorAll('.el-popover, .el-popper, .mastery-box-custom-popover');
                 log(`点击后发现 ${newPopovers.length} 个弹窗`);
 
                 log("等待弹窗按钮...");
-                const maxWaitTime = 2000;
-                const checkInterval = 100;
-                let elapsedTime = 0;
+                const firstWaitStartedAt = getActiveTime();
 
-                while (elapsedTime < maxWaitTime) {
-                    await new Promise(r => setTimeout(r, checkInterval));
-                    elapsedTime += checkInterval;
+                while (getActiveTime() - firstWaitStartedAt < maxWaitTime) {
+                    await waitForActiveTime(checkInterval);
 
                     // 查找带有"提升掌握度"或"去提升"文字的按钮
                     const allButtons = document.querySelectorAll('.el-popover .el-button, .mastery-box-custom-popover .el-button, .custom-content .el-button, .el-popper .el-button');
@@ -988,15 +1072,14 @@
             // 如果第一次点击没触发弹窗，等待后再次点击
             if (!popoverButton) {
                 log("首次点击未触发弹窗，再次尝试...");
-                await new Promise(r => setTimeout(r, 300));
+                await waitForActiveTime(300);
                 reliableClick(triggerElement);
-                await new Promise(r => setTimeout(r, 500));
+                await waitForActiveTime(500);
 
                 // 再次查找按钮
-                elapsedTime = 0;
-                while (elapsedTime < maxWaitTime) {
-                    await new Promise(r => setTimeout(r, checkInterval));
-                    elapsedTime += checkInterval;
+                const retryWaitStartedAt = getActiveTime();
+                while (getActiveTime() - retryWaitStartedAt < maxWaitTime) {
+                    await waitForActiveTime(checkInterval);
 
                     const allButtons = document.querySelectorAll('.el-popover .el-button, .mastery-box-custom-popover .el-button, .custom-content .el-button, .el-popper .el-button');
                     for (const btn of allButtons) {
@@ -1012,7 +1095,7 @@
 
             if (popoverButton) {
                 log("已找到【提升掌握度/去提升】按钮，正在点击...");
-                await new Promise(r => setTimeout(r, 300));
+                await waitForActiveTime(300);
                 writeSessionStorage(activeItemStorageKey, targetItemKey);
                 reliableClick(popoverButton);
                 log("已点击进入练习页面！");
@@ -1036,8 +1119,8 @@
             mainLoopPending = true;
             return;
         }
-        if (mainLoopTimer) clearTimeout(mainLoopTimer);
-        mainLoopTimer = setTimeout(() => {
+        if (mainLoopTimer) mainLoopTimer();
+        mainLoopTimer = scheduleActiveTimeout(() => {
             mainLoopTimer = null;
             mainLoop();
         }, delay);
@@ -1087,7 +1170,7 @@
             requestMainLoop(0);
         } else {
             if (mainLoopTimer) {
-                clearTimeout(mainLoopTimer);
+                mainLoopTimer();
                 mainLoopTimer = null;
             }
             mainLoopPending = false;
