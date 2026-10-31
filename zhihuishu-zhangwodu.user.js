@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知到智慧树掌握度答题-AI自动答题脚本(Zhihuishu AI Auto-Answering)
 // @namespace    https://github.com/Cooanyh/zhihuishu-zhangwodu
-// @version      2.1.0
+// @version      2.2.0
 // @description  全自动完成智慧树掌握度练习。支持多页面布局适配、智能弹窗探测与精准匹配。集成题库搜索与多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)自动Fallback。
 // @author       Coren
 // @match        https://studywisdomh5.zhihuishu.com/study*
@@ -101,6 +101,7 @@
                     </div>
                 </div>
                 <button id="start-button">开始自动答题</button>
+                <button id="reset-attempted-button" style="padding: 8px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">重置本页尝试记录</button>
                 <div id="status-log">状态日志...</div>
             </div>
         </div>
@@ -124,9 +125,18 @@
     const fallbackAiCheckbox = document.getElementById('fallback-ai');
     const refreshQuizbankButton = document.getElementById('refresh-quizbank');
     const stopConditionSelect = document.getElementById('stop-condition');
+    const resetAttemptedButton = document.getElementById('reset-attempted-button');
 
     let isPanelVisible = false;
-    let autoMode = false;
+    const courseRunId = new URLSearchParams(window.location.search).get('recruitAndCourseId') || window.location.pathname;
+    const autoModeStorageKey = `zhihuishu_zhangwodu_auto_mode:${courseRunId}`;
+    const attemptedItemsStorageKey = `zhihuishu_zhangwodu_attempted_items:${courseRunId}`;
+    const activeItemStorageKey = `zhihuishu_zhangwodu_active_item:${courseRunId}`;
+    let autoMode = readSessionStorage(autoModeStorageKey) === '1';
+    let attemptedMasteryItems = new Set(readSessionArray(attemptedItemsStorageKey));
+    let mainLoopTimer = null;
+    let mainLoopRunning = false;
+    let mainLoopPending = false;
     let quizBank = [];
 
     // --- 3.AI服务商配置中心 ---
@@ -266,16 +276,65 @@
 
     refreshQuizbankButton.addEventListener('click', fetchQuizBank);
 
-
     startButton.addEventListener('click', () => toggleAutoMode(!autoMode));
+    resetAttemptedButton.addEventListener('click', () => {
+        if (!window.confirm('清除当前课程、本浏览器标签页中的已尝试知识点记录？')) return;
+        attemptedMasteryItems.clear();
+        writeSessionStorage(attemptedItemsStorageKey, '[]');
+        removeSessionStorage(activeItemStorageKey);
+        log('已清除本页尝试记录。');
+    });
     updateUIVisibility();
+    updateAutoModeButton();
 
     // --- 5.核心功能函数 ---
     function log(message) {
         console.log(`[AI脚本] ${message}`);
         const timestamp = new Date().toLocaleTimeString();
-        statusLog.innerHTML += `<div>${timestamp}: ${message}</div>`;
+        const entry = document.createElement('div');
+        entry.textContent = `${timestamp}: ${message}`;
+        statusLog.appendChild(entry);
         statusLog.scrollTop = statusLog.scrollHeight;
+    }
+
+    function readSessionStorage(key) {
+        try { return sessionStorage.getItem(key); }
+        catch (e) { return null; }
+    }
+
+    function writeSessionStorage(key, value) {
+        try { sessionStorage.setItem(key, value); return true; }
+        catch (e) { log(`无法保存本页运行状态: ${e.message}`); return false; }
+    }
+
+    function removeSessionStorage(key) {
+        try { sessionStorage.removeItem(key); }
+        catch (e) { log(`无法清理本页运行状态: ${e.message}`); }
+    }
+
+    function readSessionArray(key) {
+        try {
+            const value = JSON.parse(sessionStorage.getItem(key) || '[]');
+            return Array.isArray(value) ? value.filter(item => typeof item === 'string') : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    function getMasteryItemKey(item) {
+        const courseId = new URLSearchParams(window.location.search).get('recruitAndCourseId') || '';
+        const sectionName = item.closest('.chunk-list')?.parentElement?.querySelector('.mastery-name')?.textContent?.trim() || '';
+        const itemName = item.querySelector('.item-box-name_text, .item-box-name')?.textContent?.trim() || item.textContent.trim();
+        return JSON.stringify([courseId, sectionName, itemName]);
+    }
+
+    function markActiveMasteryItemAttempted() {
+        const activeItemKey = readSessionStorage(activeItemStorageKey);
+        if (!activeItemKey) return;
+        attemptedMasteryItems.add(activeItemKey);
+        writeSessionStorage(attemptedItemsStorageKey, JSON.stringify([...attemptedMasteryItems]));
+        removeSessionStorage(activeItemStorageKey);
+        log('本知识点已提交过，本轮不会重复进入；如页面仍显示灰色，会在结束时提示复核。');
     }
 
     function reliableClick(element) {
@@ -502,11 +561,30 @@
     // --- 6. 页面处理逻辑 ---
     async function processTestPage() {
         log("进入答题页面，开始处理...");
-        try { await waitForQuestionChange("1", 10000); }
-        catch (e) { log(`错误: ${e.message}`); toggleAutoMode(false); return; }
+        let firstQuestionReady = false;
+        for (let attempt = 1; attempt <= 2 && autoMode; attempt++) {
+            try {
+                await waitForQuestionChange("1", attempt === 1 ? 10000 : 5000);
+                firstQuestionReady = true;
+                break;
+            } catch (e) {
+                log(`第 1 题加载等待第 ${attempt} 次失败: ${e.message}`);
+            }
+        }
+        if (!autoMode) return;
+        if (!firstQuestionReady) {
+            toggleAutoMode(false, '连续等待第 1 题超时，请检查页面加载后再继续。');
+            return;
+        }
 
         const questionItems = document.querySelectorAll('.answer-card .list .item');
         log(`共 ${questionItems.length} 道题。`);
+        if (questionItems.length === 0) {
+            toggleAutoMode(false, '未识别到答题卡题目，已暂停以免误提交。');
+            return;
+        }
+
+        const unansweredQuestionNumbers = new Set();
         for (const questionEl of questionItems) {
             if (!autoMode) { log("自动答题已停止。"); return; }
             if (questionEl.classList.contains('violet')) {
@@ -525,26 +603,71 @@
                 const optionsElements = Array.from(questionContainer.querySelectorAll('.el-radio, .el-checkbox'));
                 const optionsText = optionsElements.map(el => el.querySelector('.preStyle')?.innerText.trim());
 
-                if (!questionTitle || optionsElements.length === 0) { log("错误: 无法解析题目或选项，跳过此题。"); continue; }
+                if (!questionTitle || optionsElements.length === 0 || optionsText.some(option => !option)) {
+                    log("错误: 无法解析题目或选项，标记为未完成并跳过。");
+                    unansweredQuestionNumbers.add(questionNumber);
+                    continue;
+                }
                 log(`题目 (${questionType}): ${questionTitle}`);
 
                 // --- 调用总调度函数 ---
-                const answer = await getAnswer(questionTitle, optionsText, questionType);
+                let answer = await getAnswer(questionTitle, optionsText, questionType);
 
-                if (answer) {
-                    log(`尝试选择答案: ${answer}`);
-                    for (let char of answer) {
-                        const optionIndex = char.charCodeAt(0) - 65;
-                        if (optionIndex >= 0 && optionIndex < optionsElements.length) {
-                            const labelElement = optionsElements[optionIndex];
-                            const inputElement = labelElement.querySelector('.el-radio__original, .el-checkbox__original');
-                            if (inputElement) { reliableClick(inputElement); }
-                            else { log(`错误：找不到选项 ${char} 的内部input元素。`); }
-                            await new Promise(r => setTimeout(r, 200));
-                        }
-                    }
+                if (answer && questionType === '判断题' && providerSelect.value === 'coren') {
+                    const judgement = String(answer).trim();
+                    if (judgement === '对') answer = 'A';
+                    else if (judgement === '错') answer = 'B';
+                }
+
+                const answerText = String(answer || '').trim().toUpperCase();
+                const answerLetters = answerText.replace(/[^A-Z]/g, '');
+                const requestedIndices = [...new Set([...answerLetters].map(char => char.charCodeAt(0) - 65))];
+                const answerIsValid = answerLetters.length > 0
+                    && answerLetters.length === answerText.length
+                    && requestedIndices.length === answerLetters.length
+                    && requestedIndices.every(index => index >= 0 && index < optionsElements.length)
+                    && (questionType !== '单选题' || requestedIndices.length === 1);
+
+                if (!answerIsValid) {
+                    log("未获得有效答案，跳过此题；本轮不会自动提交。");
+                    unansweredQuestionNumbers.add(questionNumber);
                 } else {
-                    log("未找到答案，跳过此题。");
+                    log(`尝试选择答案: ${answerLetters}`);
+                    const requestedIndexSet = new Set(requestedIndices);
+                    const isOptionSelected = (el) => {
+                        const input = el.querySelector('.el-radio__original, .el-checkbox__original');
+                        return Boolean(input?.checked) || el.classList.contains('is-checked');
+                    };
+                    const selectedBefore = new Set(optionsElements
+                        .map((el, index) => isOptionSelected(el) ? index : -1)
+                        .filter(index => index >= 0));
+
+                    for (const optionIndex of selectedBefore) {
+                        if (requestedIndexSet.has(optionIndex)) continue;
+                        const inputElement = optionsElements[optionIndex].querySelector('.el-radio__original, .el-checkbox__original');
+                        if (inputElement) reliableClick(inputElement);
+                    }
+                    for (const optionIndex of requestedIndices) {
+                        if (selectedBefore.has(optionIndex)) continue;
+                        const labelElement = optionsElements[optionIndex];
+                        const inputElement = labelElement.querySelector('.el-radio__original, .el-checkbox__original');
+                        if (inputElement) reliableClick(inputElement);
+                        else {
+                            log(`错误：找不到选项 ${String.fromCharCode(65 + optionIndex)} 的内部 input 元素。`);
+                            unansweredQuestionNumbers.add(questionNumber);
+                        }
+                        await new Promise(r => setTimeout(r, 200));
+                    }
+
+                    const selectedAfter = new Set(optionsElements
+                        .map((el, index) => isOptionSelected(el) ? index : -1)
+                        .filter(index => index >= 0));
+                    const selectionMatches = selectedAfter.size === requestedIndexSet.size
+                        && [...requestedIndexSet].every(index => selectedAfter.has(index));
+                    if (!selectionMatches) {
+                        log(`答案选择未通过页面状态校验（预期 ${requestedIndices.map(index => String.fromCharCode(65 + index)).join('、')}，页面实际选择 ${[...selectedAfter].map(index => String.fromCharCode(65 + index)).join('、') || '无'}）。`);
+                        unansweredQuestionNumbers.add(questionNumber);
+                    }
                 }
 
                 if (modeSelect.value === 'free' || (modeSelect.value === 'quizbank' && fallbackAiCheckbox.checked)) {
@@ -552,15 +675,31 @@
                     await new Promise(r => setTimeout(r, 2000));
                 }
 
-            } catch (err) { log(`处理第 ${questionNumber} 题时出错: ${err.message}, 跳过此题。`); continue; }
+            } catch (err) {
+                log(`处理第 ${questionNumber} 题时出错: ${err.message}, 标记为未完成并跳过。`);
+                unansweredQuestionNumbers.add(questionNumber);
+            }
         }
-        if (autoMode) {
-            log("所有题目回答完毕，准备提交...");
-            await new Promise(r => setTimeout(r, 1000));
-            const submitButton = document.querySelector('.submit');
-            reliableClick(submitButton);
-            log("已提交答案。");
+        if (!autoMode) return;
+        if (unansweredQuestionNumbers.size > 0) {
+            const numbers = [...unansweredQuestionNumbers].join('、');
+            toggleAutoMode(false, `第 ${numbers} 题未答或未通过选择校验，已暂停；请人工检查后再提交。`);
+            return;
         }
+
+        const submitButton = document.querySelector('.submit');
+        if (!submitButton || submitButton.disabled) {
+            toggleAutoMode(false, '未找到可用的提交按钮，请人工检查页面。');
+            return;
+        }
+
+        log("所有题目均已选择并通过页面状态校验，等待人工确认提交...");
+        if (!window.confirm('题目已处理完成。请确认答案后，是否提交本次练习？')) {
+            toggleAutoMode(false, '提交未获人工确认，练习保持未提交状态。');
+            return;
+        }
+        reliableClick(submitButton);
+        log("已按人工确认触发提交。");
     }
 
     function waitForQuestionChange(qNum, timeout = 7000) {
@@ -576,7 +715,8 @@
                 const visibleExamItem = Array.from(document.querySelectorAll('.exam-item')).find(el => el.offsetHeight > 0);
                 const questionContainer = visibleExamItem?.querySelector('.question-item');
                 const titleElement = questionContainer?.querySelector('.quest-title .option-index');
-                if (titleElement && titleElement.textContent.trim().startsWith(qNum)) {
+                const displayedQuestionNumber = titleElement?.textContent?.trim().match(/^\d+/)?.[0];
+                if (displayedQuestionNumber === String(qNum)) {
                     log(`第 ${qNum} 题加载成功!`);
                     clearInterval(interval);
                     resolve();
@@ -587,17 +727,30 @@
 
     async function processResultsPage() {
         if (!autoMode) return;
-        log("进入结算页面，准备返回...");
-        await new Promise(r => setTimeout(r, 3000));
-        const backButton = document.querySelector('.backup-icon');
-        if (backButton) { reliableClick(backButton); log("已返回主页面，准备开始下一轮。"); }
-        else { log("错误: 未找到返回按钮。"); }
+        log("进入结算页面，准备读取提交结果...");
+        markActiveMasteryItemAttempted();
+
+        const deadline = Date.now() + 10000;
+        let backButton = null;
+        while (autoMode && Date.now() < deadline) {
+            backButton = document.querySelector('.backup-icon');
+            if (backButton) break;
+            await new Promise(r => setTimeout(r, 250));
+        }
+        if (!autoMode) return;
+        if (backButton) {
+            reliableClick(backButton);
+            log("已返回掌握度页面，等待状态刷新...");
+        } else {
+            toggleAutoMode(false, '结算页 10 秒内未出现返回按钮，请人工检查提交结果。');
+        }
     }
 
     // 主页逻辑：自动悬停并点击"提升掌握度"按钮
     async function findAndScrollToIncompleteItem() {
         // 等待页面稳定
         await new Promise(r => setTimeout(r, 1000));
+        if (!autoMode) return;
 
         const stopCondition = stopConditionSelect.value;
         let targetItem = null;
@@ -612,20 +765,15 @@
         });
         log(`页面项目统计: ${JSON.stringify(colorCounts)}`);
 
-        if (stopCondition === 'gray') {
-            // 仅查找灰色 (未开始) 项目
-            log("寻找灰色(未开始)项目...");
-            targetItem = document.querySelector('.item-box.gray');
-            logMessage = '灰色';
-        } else {
-            // 查找灰色和粉色 (薄弱点) 项目
-            log("寻找灰色或粉色(薄弱)项目...");
-            targetItem = document.querySelector('.item-box.gray') ||
-                document.querySelector('.item-box.pink');
-            logMessage = '灰色/粉色';
-        }
+        const eligibleSelector = stopCondition === 'gray' ? '.item-box.gray' : '.item-box.gray, .item-box.pink';
+        const eligibleItems = Array.from(document.querySelectorAll(eligibleSelector));
+        const pendingItems = eligibleItems.filter(item => !attemptedMasteryItems.has(getMasteryItemKey(item)));
+        targetItem = pendingItems[0] || null;
+        logMessage = stopCondition === 'gray' ? '灰色' : '灰色/粉色';
+        log(`待处理${logMessage}项目 ${pendingItems.length} 个；本页已提交过 ${attemptedMasteryItems.size} 个知识点。`);
 
         if (targetItem) {
+            const targetItemKey = getMasteryItemKey(targetItem);
             // 获取完整的类名用于调试
             const fullClassName = targetItem.className;
             const itemName = targetItem.querySelector('.item-box-name')?.textContent?.trim() || '未知';
@@ -805,42 +953,85 @@
             if (popoverButton) {
                 log("已找到【提升掌握度/去提升】按钮，正在点击...");
                 await new Promise(r => setTimeout(r, 300));
+                writeSessionStorage(activeItemStorageKey, targetItemKey);
                 reliableClick(popoverButton);
                 log("已点击进入练习页面！");
             } else {
-                log("警告: 未能找到按钮，请手动点击该项目。");
+                toggleAutoMode(false, '未能打开该知识点的练习入口，请人工检查页面后继续。');
             }
         } else {
-            log(`恭喜！未找到${logMessage}项目，任务全部完成。`);
-            toggleAutoMode(false);
+            if (eligibleItems.length > 0) {
+                toggleAutoMode(false, `剩余 ${eligibleItems.length} 个${logMessage}项目本轮已提交过但状态仍未更新，已停止重复进入；请人工复核。`);
+            } else {
+                log(`未找到${logMessage}项目，任务已完成。`);
+                toggleAutoMode(false);
+            }
         }
     }
 
 
-    function mainLoop() {
+    function requestMainLoop(delay = 0) {
         if (!autoMode) return;
-        const currentUrl = window.location.href;
-        // 支持 studywisdomh5.zhihuishu.com 和 wisdom-mooc.zhihuishu.com
-        if (currentUrl.includes('/study/mastery') || currentUrl.includes('/study/analysis')) {
-            findAndScrollToIncompleteItem();
-        } else if (currentUrl.includes('/exam')) {
-            processTestPage();
-        } else if (currentUrl.includes('/pointOfMastery')) {
-            processResultsPage();
+        if (mainLoopRunning) {
+            mainLoopPending = true;
+            return;
+        }
+        if (mainLoopTimer) clearTimeout(mainLoopTimer);
+        mainLoopTimer = setTimeout(() => {
+            mainLoopTimer = null;
+            mainLoop();
+        }, delay);
+    }
+
+    async function mainLoop() {
+        if (!autoMode) return;
+        if (mainLoopRunning) {
+            mainLoopPending = true;
+            return;
+        }
+
+        mainLoopRunning = true;
+        try {
+            const currentUrl = window.location.href;
+            if (currentUrl.includes('/study/mastery') || currentUrl.includes('/study/analysis')) {
+                await findAndScrollToIncompleteItem();
+            } else if (currentUrl.includes('/exam')) {
+                await processTestPage();
+            } else if (currentUrl.includes('/pointOfMastery')) {
+                await processResultsPage();
+            } else {
+                toggleAutoMode(false, '当前页面不在支持范围内。');
+            }
+        } catch (error) {
+            toggleAutoMode(false, `主流程异常：${error.message}`);
+        } finally {
+            mainLoopRunning = false;
+            if (mainLoopPending && autoMode) {
+                mainLoopPending = false;
+                requestMainLoop(500);
+            }
         }
     }
 
-    function toggleAutoMode(start) {
-        autoMode = start;
+    function updateAutoModeButton() {
+        startButton.textContent = autoMode ? '停止自动答题' : '开始自动答题';
+        startButton.style.backgroundColor = autoMode ? '#dc3545' : '#198754';
+    }
+
+    function toggleAutoMode(start, reason = '') {
+        autoMode = Boolean(start);
+        writeSessionStorage(autoModeStorageKey, autoMode ? '1' : '0');
+        updateAutoModeButton();
         if (autoMode) {
-            startButton.textContent = '停止自动答题';
-            startButton.style.backgroundColor = '#dc3545';
             log('自动答题已开始！');
-            mainLoop();
+            requestMainLoop(0);
         } else {
-            startButton.textContent = '开始自动答题';
-            startButton.style.backgroundColor = '#198754';
-            log('自动答题已停止。');
+            if (mainLoopTimer) {
+                clearTimeout(mainLoopTimer);
+                mainLoopTimer = null;
+            }
+            mainLoopPending = false;
+            log(reason ? `自动答题已暂停：${reason}` : '自动答题已停止。');
         }
     }
 
@@ -850,17 +1041,24 @@
         const url = location.href;
         if (url !== lastUrl) {
             lastUrl = url;
-            log(`URL 变动: ${url}`);
-            if (autoMode) setTimeout(mainLoop, 2000);
+            log(`页面路由已变化: ${location.pathname}`);
+            if (autoMode) requestMainLoop(1200);
         }
     }).observe(document, { subtree: true, childList: true });
 
-    window.addEventListener('load', () => {
+    function onPageReady() {
         log("AI答题脚本已加载。请在右侧面板选择模式并开始。");
         // 启动时自动加载题库
         if (GM_getValue('answer_mode', 'free') === 'quizbank' && GM_getValue('quizbank_url', '')) {
             fetchQuizBank();
         }
-    }, false);
+        if (autoMode) {
+            log('检测到本标签页上次运行状态，正在恢复任务...');
+            requestMainLoop(1200);
+        }
+    }
+
+    if (document.readyState === 'complete') setTimeout(onPageReady, 0);
+    else window.addEventListener('load', onPageReady, { once: true });
 
 })();
