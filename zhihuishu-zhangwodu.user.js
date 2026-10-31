@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知到智慧树掌握度答题-AI自动答题脚本(Zhihuishu AI Auto-Answering)
 // @namespace    https://github.com/Cooanyh/zhihuishu-zhangwodu
-// @version      2.2.0
+// @version      2.2.1
 // @description  全自动完成智慧树掌握度练习。支持多页面布局适配、智能弹窗探测与精准匹配。集成题库搜索与多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)自动Fallback。
 // @author       Coren
 // @match        https://studywisdomh5.zhihuishu.com/study*
@@ -339,6 +339,10 @@
 
     function reliableClick(element) {
         if (!element) { log("警告: 尝试点击一个不存在的元素。"); return; }
+        if (typeof element.click === 'function') {
+            element.click();
+            return;
+        }
         const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true, view: unsafeWindow });
         element.dispatchEvent(clickEvent);
     }
@@ -728,6 +732,13 @@
     async function processResultsPage() {
         if (!autoMode) return;
         log("进入结算页面，准备读取提交结果...");
+
+        const settleDeadline = Date.now() + 3000;
+        while (autoMode && Date.now() < settleDeadline) {
+            await new Promise(r => setTimeout(r, 250));
+        }
+        if (!autoMode) return;
+        log("结算页已等待 3 秒，继续返回掌握度页面。");
         markActiveMasteryItemAttempted();
 
         const deadline = Date.now() + 10000;
