@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/版本-2.2.1-blue?style=flat-square)     [![License](https://img.shields.io/badge/协议-CC%20BY--NC--SA%204.0-orange?style=flat-square)](https://creativecommons.org/licenses/by-nc-sa/4.0/)     [![Author](https://img.shields.io/badge/作者-Coren-orange?style=flat-square)](https://github.com/Cooanyh)
+![Version](https://img.shields.io/badge/版本-2.2.2-blue?style=flat-square)     [![License](https://img.shields.io/badge/协议-CC%20BY--NC--SA%204.0-orange?style=flat-square)](https://creativecommons.org/licenses/by-nc-sa/4.0/)     [![Author](https://img.shields.io/badge/作者-Coren-orange?style=flat-square)](https://github.com/Cooanyh)
 # 知到智慧树掌握度答题-AI自动答题脚本 (Zhihuishu AI Auto-Answering)
 ### 在智慧树掌握度答题(studywisdomh5)页面辅助完成灰色知识点/红色薄弱点练习。提供 UI 面板，支持免费模式及自定义 AI 服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)。未答题或选项状态校验失败时会暂停；完成答题后须人工确认提交。
 

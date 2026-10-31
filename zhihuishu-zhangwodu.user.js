@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知到智慧树掌握度答题-AI自动答题脚本(Zhihuishu AI Auto-Answering)
 // @namespace    https://github.com/Cooanyh/zhihuishu-zhangwodu
-// @version      2.2.1
+// @version      2.2.2
 // @description  全自动完成智慧树掌握度练习。支持多页面布局适配、智能弹窗探测与精准匹配。集成题库搜索与多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)自动Fallback。
 // @author       Coren
 // @match        https://studywisdomh5.zhihuishu.com/study*
@@ -328,13 +328,20 @@
         return JSON.stringify([courseId, sectionName, itemName]);
     }
 
-    function markActiveMasteryItemAttempted() {
+    function markActiveMasteryItemAttempted(resultSummary = null) {
         const activeItemKey = readSessionStorage(activeItemStorageKey);
         if (!activeItemKey) return;
         attemptedMasteryItems.add(activeItemKey);
         writeSessionStorage(attemptedItemsStorageKey, JSON.stringify([...attemptedMasteryItems]));
         removeSessionStorage(activeItemStorageKey);
-        log('本知识点已提交过，本轮不会重复进入；如页面仍显示灰色，会在结束时提示复核。');
+        if (resultSummary) {
+            const fullScore = resultSummary.score >= 100 && resultSummary.correct === resultSummary.total;
+            const resultLabel = `掌握度 ${resultSummary.score}%，答对 ${resultSummary.correct}/${resultSummary.total} 题`;
+            log(`已记录本知识点本轮尝试（${resultLabel}${fullScore ? '，本次满分' : '，本次未满分'}）；是否掌握仍以列表状态为准。`);
+            if (!fullScore) log('本次结果未满分，知识点可能仍显示灰色；为避免重复提交，本轮不会自动重做该点。');
+        } else {
+            log('已记录本知识点本轮尝试，但未能读取结算结果；这不代表平台已确认掌握度更新，本轮不会自动重复提交。');
+        }
     }
 
     function reliableClick(element) {
@@ -729,17 +736,44 @@
         });
     }
 
+    function readExerciseResultSummary() {
+        const scoreText = document.querySelector('.charts-label-rate')?.textContent?.trim() || '';
+        const scoreMatch = scoreText.match(/(\d+(?:\.\d+)?)\s*%/);
+        const score = scoreMatch ? Number(scoreMatch[1]) : null;
+        const counts = new Map();
+
+        for (const counter of document.querySelectorAll('.line1-count-total')) {
+            const label = counter.querySelector('.line1-count-total-title')?.textContent?.trim();
+            const valueText = counter.querySelector('.line1-count-total-num')?.textContent?.trim() || '';
+            const valueMatch = valueText.match(/\d+/);
+            if (label && valueMatch) counts.set(label, Number(valueMatch[0]));
+        }
+
+        const total = counts.get('总题数');
+        const correct = counts.get('已答对');
+        if (!Number.isFinite(score) || !Number.isFinite(total) || !Number.isFinite(correct)) return null;
+        return { score, total, correct };
+    }
+
     async function processResultsPage() {
         if (!autoMode) return;
-        log("进入结算页面，准备读取提交结果...");
+        log("进入结算页面，等待读取掌握度和答题统计...");
 
-        const settleDeadline = Date.now() + 3000;
+        const settleDeadline = Date.now() + 10000;
+        let resultSummary = null;
         while (autoMode && Date.now() < settleDeadline) {
+            resultSummary = readExerciseResultSummary();
+            if (resultSummary) break;
             await new Promise(r => setTimeout(r, 250));
         }
         if (!autoMode) return;
-        log("结算页已等待 3 秒，继续返回掌握度页面。");
-        markActiveMasteryItemAttempted();
+        if (resultSummary) {
+            log(`结算结果已读取：掌握度 ${resultSummary.score}%，答对 ${resultSummary.correct}/${resultSummary.total} 题。`);
+        } else {
+            log('等待 10 秒仍未识别结算统计；只记录为本轮已尝试，不推断为提交成功或已掌握。');
+        }
+        markActiveMasteryItemAttempted(resultSummary);
+        log("结算检查完成，继续返回掌握度页面。");
 
         const deadline = Date.now() + 10000;
         let backButton = null;
@@ -972,7 +1006,7 @@
             }
         } else {
             if (eligibleItems.length > 0) {
-                toggleAutoMode(false, `剩余 ${eligibleItems.length} 个${logMessage}项目本轮已提交过但状态仍未更新，已停止重复进入；请人工复核。`);
+                toggleAutoMode(false, `剩余 ${eligibleItems.length} 个${logMessage}项目本轮均已尝试但仍显示灰色，已停止自动重复；请先核对各点结算结果。`);
             } else {
                 log(`未找到${logMessage}项目，任务已完成。`);
                 toggleAutoMode(false);
