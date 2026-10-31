@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/版本-2.2.2-blue?style=flat-square)     [![License](https://img.shields.io/badge/协议-CC%20BY--NC--SA%204.0-orange?style=flat-square)](https://creativecommons.org/licenses/by-nc-sa/4.0/)     [![Author](https://img.shields.io/badge/作者-Coren-orange?style=flat-square)](https://github.com/Cooanyh)
+![Version](https://img.shields.io/badge/版本-2.2.3-blue?style=flat-square)     [![License](https://img.shields.io/badge/协议-CC%20BY--NC--SA%204.0-orange?style=flat-square)](https://creativecommons.org/licenses/by-nc-sa/4.0/)     [![Author](https://img.shields.io/badge/作者-Coren-orange?style=flat-square)](https://github.com/Cooanyh)
 # 知到智慧树掌握度答题-AI自动答题脚本 (Zhihuishu AI Auto-Answering)
 ### 在智慧树掌握度答题(studywisdomh5)页面辅助完成灰色知识点/红色薄弱点练习。提供 UI 面板，支持免费模式及自定义 AI 服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)。未答题或选项状态校验失败时会暂停；完成答题后须人工确认提交。
 
@@ -7,7 +7,7 @@
 1. 自动寻找任务：在课程的“知识点掌握”页面，自动定位所有未完成的灰色知识点并进入答题（或红色薄弱点，**取决于用户选择，默认仅灰色未完成**）。
 2. 采用AI答题：读取题目和选项，通过调用 DeepSeek 的AI模型获取答案，并自动在页面上选择正确选项（支持单选和多选）。
 3. 防误提交：有题目未答、答案无效或页面选择状态不匹配时暂停；全部处理后弹出人工确认，再触发提交。
-4. 循环执行：提交后自动返回并继续处理其他知识点；同一标签页本轮不会重复进入已经提交过的知识点，若状态仍未更新会暂停提示复核。
+4. 循环执行：提交后自动返回并继续处理其他知识点；按卡片序号区分重复名称，防止误选同名知识点或把多张卡片误记为一次尝试。若无法确认卡片与弹窗的对应关系会暂停；同一标签页本轮不会重复进入已经提交过的卡片。
 5. 支持多个掌握度页面：/study/mastery或者/study/analysis（见下图示例位置）
 #### 测试有限，不确认所有掌握度页面都可以正常使用，有问题的可以提交issue并附带课程链接
 

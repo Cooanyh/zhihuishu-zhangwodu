@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         知到智慧树掌握度答题-AI自动答题脚本(Zhihuishu AI Auto-Answering)
 // @namespace    https://github.com/Cooanyh/zhihuishu-zhangwodu
-// @version      2.2.2
+// @version      2.2.3
 // @description  全自动完成智慧树掌握度练习。支持多页面布局适配、智能弹窗探测与精准匹配。集成题库搜索与多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)自动Fallback。
 // @author       Coren
 // @match        https://studywisdomh5.zhihuishu.com/study*
@@ -133,7 +133,7 @@
     const attemptedItemsStorageKey = `zhihuishu_zhangwodu_attempted_items:${courseRunId}`;
     const activeItemStorageKey = `zhihuishu_zhangwodu_active_item:${courseRunId}`;
     let autoMode = readSessionStorage(autoModeStorageKey) === '1';
-    let attemptedMasteryItems = new Set(readSessionArray(attemptedItemsStorageKey));
+    let attemptedMasteryItems = new Set(readSessionArray(attemptedItemsStorageKey).filter(isCurrentMasteryItemKey));
     let mainLoopTimer = null;
     let mainLoopRunning = false;
     let mainLoopPending = false;
@@ -321,16 +321,47 @@
         }
     }
 
+    function isCurrentMasteryItemKey(key) {
+        try {
+            const value = JSON.parse(key);
+            return Array.isArray(value) && value.length === 5 && value[1] === 'tile-v2' && Number.isInteger(value[2]);
+        } catch (e) {
+            return false;
+        }
+    }
+
     function getMasteryItemKey(item) {
         const courseId = new URLSearchParams(window.location.search).get('recruitAndCourseId') || '';
+        const itemIndex = Array.from(document.querySelectorAll('.item-box')).indexOf(item);
+        if (itemIndex < 0) throw new Error('知识点卡片已脱离当前页面，无法生成唯一标识。');
         const sectionName = item.closest('.chunk-list')?.parentElement?.querySelector('.mastery-name')?.textContent?.trim() || '';
         const itemName = item.querySelector('.item-box-name_text, .item-box-name')?.textContent?.trim() || item.textContent.trim();
-        return JSON.stringify([courseId, sectionName, itemName]);
+        return JSON.stringify([courseId, 'tile-v2', itemIndex, sectionName, itemName]);
+    }
+
+    function getMasteryPopoverForItem(item) {
+        const items = Array.from(document.querySelectorAll('.item-box'));
+        const itemIndex = items.indexOf(item);
+        const popovers = Array.from(document.querySelectorAll('.mastery-box-custom-popover'));
+        if (itemIndex < 0 || popovers.length !== items.length) return null;
+
+        const popover = popovers[itemIndex];
+        const itemName = item.querySelector('.item-box-name_text, .item-box-name')?.textContent?.trim() || '';
+        const popoverName = popover?.querySelector('.name, strong')?.textContent?.trim() || '';
+        const normalize = value => value.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
+        if (!itemName || !popoverName || normalize(itemName) !== normalize(popoverName)) return null;
+
+        return { itemIndex, popover, popoverName };
     }
 
     function markActiveMasteryItemAttempted(resultSummary = null) {
         const activeItemKey = readSessionStorage(activeItemStorageKey);
         if (!activeItemKey) return;
+        if (!isCurrentMasteryItemKey(activeItemKey)) {
+            removeSessionStorage(activeItemStorageKey);
+            toggleAutoMode(false, '检测到旧版知识点标识，已暂停以避免把结果记到错误卡片；请返回掌握度页面后重新开始。');
+            return;
+        }
         attemptedMasteryItems.add(activeItemKey);
         writeSessionStorage(attemptedItemsStorageKey, JSON.stringify([...attemptedMasteryItems]));
         removeSessionStorage(activeItemStorageKey);
@@ -883,42 +914,26 @@
             let popoverButton = null;
 
             if (isMasteryPage) {
-                // 对于 mastery 页面：直接在所有弹窗中查找匹配的按钮
-                log("Mastery 模式: 直接查找匹配的弹窗按钮...");
-
-                const allPopovers = document.querySelectorAll('.el-popover, .mastery-box-custom-popover');
-                for (const popover of allPopovers) {
-                    const nameEl = popover.querySelector('.name') || popover.querySelector('strong');
-                    const popoverName = nameEl?.textContent?.trim() || '';
-
-                    // 检查是否匹配目标项目
-                    const targetClean = targetItemName.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
-                    const popoverClean = popoverName.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
-
-                    if (targetClean && popoverClean && targetClean === popoverClean) {
-                        log(`找到匹配弹窗: "${popoverName.substring(0, 20)}..."`);
-
-                        // 找到该弹窗中的按钮
-                        const btn = popover.querySelector('.el-button');
-                        if (btn && (btn.textContent.includes('提升掌握度') || btn.textContent.includes('去提升'))) {
-                            popoverButton = btn;
-
-                            // 确保这个弹窗可见
-                            popover.style.display = 'block';
-                            popover.style.visibility = 'visible';
-                            popover.style.opacity = '1';
-                            popover.setAttribute('aria-hidden', 'false');
-
-                            log("弹窗匹配成功!");
-                            break;
-                        }
-                    }
+                log("Mastery 模式: 按卡片顺序匹配对应弹窗...");
+                const match = getMasteryPopoverForItem(targetItem);
+                if (!match) {
+                    toggleAutoMode(false, '无法将所选卡片与唯一弹窗可靠对应，已暂停以避免练错知识点。');
+                    return;
                 }
 
-                if (!popoverButton) {
-                    log("警告: 未在预渲染弹窗中找到匹配项，尝试点击触发...");
-                    reliableClick(clickTarget);
+                const { itemIndex, popover, popoverName } = match;
+                const btn = popover.querySelector('.el-button');
+                if (!btn || (!btn.textContent.includes('提升掌握度') && !btn.textContent.includes('去提升'))) {
+                    toggleAutoMode(false, `第 ${itemIndex + 1} 张卡片未找到可用练习入口，已暂停。`);
+                    return;
                 }
+
+                popoverButton = btn;
+                popover.style.display = 'block';
+                popover.style.visibility = 'visible';
+                popover.style.opacity = '1';
+                popover.setAttribute('aria-hidden', 'false');
+                log(`卡片序号 ${itemIndex + 1} 与弹窗标题“${popoverName}”一一匹配。`);
             } else {
                 // 对于 analysis 页面：使用原来的点击触发方式
                 reliableClick(clickTarget);
