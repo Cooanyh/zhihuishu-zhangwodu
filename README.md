@@ -72,7 +72,7 @@
 
             2. "a": 答案 (Answer)必须是字符串。参考上面的示例，单选题: "A"；多选题: "ABC" (将所有正确选项字母连在一起)；判断题: "A" (代表“对”或“T”) 或 "B" (代表“错”或“F”)。
 
-比如：https://gist.githubusercontent.com/Cooanyh/a5d30cec09967167f9757fb9423885c8/raw/65ed73829fbf12b3f1a1b858ff195d77fa0c5a67/zhihuishu-test_tiku
+题库地址请使用你自行托管的 JSON 文件；URL 格式示例见下方。
 
 #### 第 2 步：托管你的题库文件 (以 Gist为例)
 

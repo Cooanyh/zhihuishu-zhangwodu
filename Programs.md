@@ -7,7 +7,6 @@
 ## 来源与版本
 
 - 上游仓库：<https://github.com/Cooanyh/zhihuishu-zhangwodu>
-- 本地目录：`D:\codex_project\脚本猫\zhihuishu-zhangwodu`
 - 主要入口：`zhihuishu-zhangwodu.user.js`
 - 许可：CC BY-NC-SA 4.0（以仓库 `LICENSE` 为准）
 
