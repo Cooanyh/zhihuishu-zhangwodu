@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         知到智慧树掌握度答题-AI自动答题脚本(Zhihuishu AI Auto-Answering)
 // @namespace    https://github.com/Cooanyh/zhihuishu-zhangwodu
-// @version      2.2.4
-// @description  全自动完成智慧树掌握度练习。支持后台等待恢复、多页面布局适配、智能弹窗探测与精准匹配。集成题库搜索与多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)自动Fallback。
+// @version      2.2.5
+// @description  全自动完成智慧树掌握度练习。支持后台等待恢复、多页面布局适配、智能弹窗探测与精准匹配、提交前免确认(全自动)。集成题库搜索与多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)自动Fallback。
 // @author       Coren
 // @match        https://studywisdomh5.zhihuishu.com/study*
 // @match        https://studywisdomh5.zhihuishu.com/exam*
@@ -67,6 +67,11 @@
                     </select>
                 </div>
 
+                <div class="input-group" style="flex-direction: row; align-items: center;">
+                    <input type="checkbox" id="auto-submit" style="width: 16px; height: 16px; margin-right: 8px; padding: 0;">
+                    <label for="auto-submit" style="margin-bottom: 0; font-weight: normal;">提交前免确认 (全自动)</label>
+                </div>
+
                 <div class="quizbank-settings hidden">
                     <div class="input-group">
                         <label for="quizbank-url">题库 JSON 地址:</label>
@@ -125,6 +130,7 @@
     const fallbackAiCheckbox = document.getElementById('fallback-ai');
     const refreshQuizbankButton = document.getElementById('refresh-quizbank');
     const stopConditionSelect = document.getElementById('stop-condition');
+    const autoSubmitCheckbox = document.getElementById('auto-submit');
     const resetAttemptedButton = document.getElementById('reset-attempted-button');
 
     let isPanelVisible = false;
@@ -286,6 +292,8 @@
     quizbankUrlInput.value = GM_getValue('quizbank_url', '');
     fallbackAiCheckbox.checked = GM_getValue('fallback_ai', false);
     stopConditionSelect.value = GM_getValue('stop_condition', 'gray');
+    // 默认开启：答题完成后直接提交，不再弹原生确认框
+    autoSubmitCheckbox.checked = GM_getValue('auto_submit', true);
 
 
     function updateUIVisibility() {
@@ -348,6 +356,13 @@
 
     stopConditionSelect.addEventListener('change', () => {
         GM_setValue('stop_condition', stopConditionSelect.value);
+    });
+
+    autoSubmitCheckbox.addEventListener('change', () => {
+        GM_setValue('auto_submit', autoSubmitCheckbox.checked);
+        log(autoSubmitCheckbox.checked
+            ? '已开启自动提交：题目处理完成后不再弹窗，直接提交本次练习。'
+            : '已关闭自动提交：题目处理完成后会弹窗等待人工确认。');
     });
 
     refreshQuizbankButton.addEventListener('click', fetchQuizBank);
@@ -449,6 +464,10 @@
         } else {
             log('已记录本知识点本轮尝试，但未能读取结算结果；这不代表平台已确认掌握度更新，本轮不会自动重复提交。');
         }
+    }
+
+    function isAutoSubmitEnabled() {
+        return autoSubmitCheckbox.checked;
     }
 
     function reliableClick(element) {
@@ -811,13 +830,18 @@
             return;
         }
 
-        log("所有题目均已选择并通过页面状态校验，等待人工确认提交...");
-        if (!window.confirm('题目已处理完成。请确认答案后，是否提交本次练习？')) {
-            toggleAutoMode(false, '提交未获人工确认，练习保持未提交状态。');
-            return;
+        if (isAutoSubmitEnabled()) {
+            log("自动提交已开启：题目全部完成且校验通过，直接提交，不弹确认框。");
+        } else {
+            log("所有题目均已选择并通过页面状态校验，等待人工确认提交...");
+            if (!window.confirm('题目已处理完成。请确认答案后，是否提交本次练习？')) {
+                toggleAutoMode(false, '提交未获人工确认，练习保持未提交状态。');
+                return;
+            }
+            log("已按人工确认准备提交。");
         }
         reliableClick(submitButton);
-        log("已按人工确认触发提交。");
+        log("已触发提交，等待结算页面...");
     }
 
     function waitForQuestionChange(qNum, timeout = 7000) {

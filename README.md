@@ -1,15 +1,16 @@
-![Version](https://img.shields.io/badge/版本-2.2.4-blue?style=flat-square)     [![License](https://img.shields.io/badge/协议-CC%20BY--NC--SA%204.0-orange?style=flat-square)](https://creativecommons.org/licenses/by-nc-sa/4.0/)     [![Author](https://img.shields.io/badge/作者-Coren-orange?style=flat-square)](https://github.com/Cooanyh)
+![Version](https://img.shields.io/badge/版本-2.2.5-blue?style=flat-square)     [![License](https://img.shields.io/badge/协议-CC%20BY--NC--SA%204.0-orange?style=flat-square)](https://creativecommons.org/licenses/by-nc-sa/4.0/)     [![Author](https://img.shields.io/badge/作者-Coren-orange?style=flat-square)](https://github.com/Cooanyh)
 # 知到智慧树掌握度答题-AI自动答题脚本 (Zhihuishu AI Auto-Answering)
-### 在智慧树掌握度答题(studywisdomh5)页面辅助完成灰色知识点/红色薄弱点练习。提供 UI 面板，支持免费模式及自定义 AI 服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)。未答题或选项状态校验失败时会暂停；完成答题后须人工确认提交。
+### 在智慧树掌握度答题(studywisdomh5)页面辅助完成灰色知识点/红色薄弱点练习。提供 UI 面板，支持免费模式及自定义 AI 服务商(DeepSeek/Zhipu/OpenAI/Gemini/Coren)。未答题或选项状态校验失败时会暂停；默认答题完成后自动提交（可取消勾选“提交前免确认”改为人工确认）。
 
 #### 1.UI面板默认在右上角“AI”字样，点击开启
 #### 3.自动进入答题；页面刷新后可在同一标签页恢复运行
 1. 自动寻找任务：在课程的“知识点掌握”页面，自动定位所有未完成的灰色知识点并进入答题（或红色薄弱点，**取决于用户选择，默认仅灰色未完成**）。
 2. 采用AI答题：读取题目和选项，通过调用 DeepSeek 的AI模型获取答案，并自动在页面上选择正确选项（支持单选和多选）。
-3. 防误提交：有题目未答、答案无效或页面选择状态不匹配时暂停；全部处理后弹出人工确认，再触发提交。
+3. 防误提交：有题目未答、答案无效或页面选择状态不匹配时暂停；默认全部处理后直接提交，取消勾选“提交前免确认”则恢复人工确认后再提交。
 4. 循环执行：提交后自动返回并继续处理其他知识点；按卡片序号区分重复名称，防止误选同名知识点或把多张卡片误记为一次尝试。若无法确认卡片与弹窗的对应关系会暂停；同一标签页本轮不会重复进入已经提交过的卡片。
 5. 后台续跑：页面进入后台时暂停等待计时，恢复前台后继续当前步骤，避免浏览器后台节流造成误超时；浏览器彻底冻结页面期间无法执行脚本，恢复后会继续。
 6. 支持多个掌握度页面：/study/mastery或者/study/analysis（见下图示例位置）
+7. 全自动提交：面板新增“提交前免确认（全自动）”开关，默认开启并持久化；开启时答题完成后不再弹出原生确认框，关闭后仍等待人工确认。
 #### 测试有限，不确认所有掌握度页面都可以正常使用，有问题的可以提交issue并附带课程链接
 
 > **注意**本脚本需要配合使用AI api key，可以参考知乎文章[极简DeepSeek申请API教程](https://zhuanlan.zhihu.com/p/20578265749)获取Deepseek api key，同时脚本支持多种AI服务商(DeepSeek/Zhipu/OpenAI/Gemini)
